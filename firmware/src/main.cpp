@@ -94,6 +94,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     DeserializationError error = deserializeJson(doc, (char*)data);
     
     if (!error) {
+      lastCmdTime = millis();
+      
       // Читаємо швидкості (перевіряємо, чи є ключ і чи це ціле число)
       if (doc["L"].is<int>() && doc["R"].is<int>()) {
         motorSpeedL = doc["L"].as<int>();
