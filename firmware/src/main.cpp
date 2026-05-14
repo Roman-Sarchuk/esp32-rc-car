@@ -94,17 +94,16 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     DeserializationError error = deserializeJson(doc, (char*)data);
     
     if (!error) {
-      // Читаємо швидкості
-      if (doc.containsKey("L") && doc.containsKey("R")) {
-        motorSpeedL = doc["L"];
-        motorSpeedR = doc["R"];
+      // Читаємо швидкості (перевіряємо, чи є ключ і чи це ціле число)
+      if (doc["L"].is<int>() && doc["R"].is<int>()) {
+        motorSpeedL = doc["L"].as<int>();
+        motorSpeedR = doc["R"].as<int>();
         setMotors(motorSpeedL, motorSpeedR);
-        lastCmdTime = millis();
       }
-      // Читаємо світло
-      if (doc.containsKey("tL")) turnLeft = doc["tL"];
-      if (doc.containsKey("tR")) turnRight = doc["tR"];
-      if (doc.containsKey("haz")) hazard = doc["haz"];
+      // Читаємо світло (перевіряємо, чи це булеве значення true/false)
+      if (doc["tL"].is<bool>()) turnLeft = doc["tL"].as<bool>();
+      if (doc["tR"].is<bool>()) turnRight = doc["tR"].as<bool>();
+      if (doc["haz"].is<bool>()) hazard = doc["haz"].as<bool>();
     }
   }
 }
