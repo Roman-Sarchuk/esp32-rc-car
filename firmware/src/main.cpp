@@ -20,6 +20,7 @@ int motorSpeedR = 0;
 bool turnLeft = false;
 bool turnRight = false;
 bool hazard = false;
+unsigned long lastCmdTime = 0;
 
 // Таймери для неблокуючого коду (замість delay)
 unsigned long lastDistanceMeasure = 0;
@@ -98,6 +99,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
         motorSpeedL = doc["L"];
         motorSpeedR = doc["R"];
         setMotors(motorSpeedL, motorSpeedR);
+        lastCmdTime = millis();
       }
       // Читаємо світло
       if (doc.containsKey("tL")) turnLeft = doc["tL"];
@@ -158,6 +160,14 @@ void setup() {
 
 void loop() {
   ws.cleanupClients();
+
+  // Запобіжник втрати зв'язку: якщо немає команд більше 1 секунди, зупиняємося
+  if (millis() - lastCmdTime > 1000 && (motorSpeedL != 0 || motorSpeedR != 0)) {
+    motorSpeedL = 0;
+    motorSpeedR = 0;
+    setMotors(0, 0);
+    Serial.println("Watchdog: втрата зв'язку, зупинка!");
+  }
   
   // 1. Керування світлом (неблокуюче)
   handleBlink();
@@ -166,6 +176,14 @@ void loop() {
   if (millis() - lastDistanceMeasure > 500) {
     lastDistanceMeasure = millis();
     int dist = readDistance();
+
+    // Локальна безпека: якщо перешкода занадто близько, не їдемо вперед
+    if (dist < 10 && (motorSpeedL > 0 || motorSpeedR > 0)) {
+      motorSpeedL = 0;
+      motorSpeedR = 0;
+      setMotors(0, 0);
+      Serial.println("Запобіжник: перешкода надто близько!");
+    }
     
     // Формуємо JSON і відправляємо всім підключеним клієнтам
     JsonDocument doc;
