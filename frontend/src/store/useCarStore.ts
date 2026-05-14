@@ -18,8 +18,8 @@ interface CarState {
   connect: () => void;
 }
 
-// Тримаємо WebSocket поза станом Zustand
 let socket: WebSocket | null = null;
+let controlInterval: any = null; // Таймер для постійної відправки команд
 
 export const useCarStore = create<CarState>((set, get) => ({
   isConnected: false,
@@ -39,8 +39,6 @@ export const useCarStore = create<CarState>((set, get) => ({
       right: side === 'right' ? !turnSignals.right : false,
     };
     set({ turnSignals: newSignals, isHazard: false });
-    
-    // Відправляємо на ESP32
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ tL: newSignals.left, tR: newSignals.right, haz: false }));
     }
@@ -50,8 +48,6 @@ export const useCarStore = create<CarState>((set, get) => ({
     const { isHazard } = get();
     const nextState = !isHazard;
     set({ isHazard: nextState, turnSignals: { left: false, right: false } });
-    
-    // Відправляємо на ESP32
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ tL: false, tR: false, haz: nextState }));
     }
@@ -67,17 +63,22 @@ export const useCarStore = create<CarState>((set, get) => ({
     let left = y + x;
     let right = y - x;
 
-    const clamp = (val: number) => Math.round(Math.max(-100, Math.min(100, val)) * multiplier * 2.55);
-    
-    const finalLeft = clamp(left);
-    const finalRight = clamp(right);
+    // РОЗУМНИЙ РОЗРАХУНОК ШВИДКОСТІ (Враховує, що старт з 150)
+    const calculatePWM = (val: number) => {
+      const raw = Math.round(Math.max(-100, Math.min(100, val)) * multiplier);
+      if (Math.abs(raw) < 10) return 0; // Мертва зона (щоб не гуділо в стані спокою)
+
+      const MIN_SPEED = 150; // Твій мінімальний поріг для старту
+      const sign = raw > 0 ? 1 : -1;
+      // Масштабуємо від 10-100% натискання у 150-255 ШІМ
+      const speed = MIN_SPEED + ((Math.abs(raw) - 10) / 90) * (255 - MIN_SPEED);
+      return Math.round(sign * Math.min(255, speed));
+    };
+
+    const finalLeft = calculatePWM(left);
+    const finalRight = calculatePWM(right);
 
     set({ motorSpeeds: { left: finalLeft, right: finalRight } });
-
-    // Відправляємо швидкості моторів
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ L: finalLeft, R: finalRight }));
-    }
   },
 
   emergencyStop: () => {
@@ -88,34 +89,33 @@ export const useCarStore = create<CarState>((set, get) => ({
   },
 
   connect: () => {
-    // Якщо розробляєш локально (npm run dev), підключайся до IP ESP32, інакше до хоста сайту
     const host = window.location.hostname === 'localhost' ? '192.168.4.1' : window.location.hostname;
     socket = new WebSocket(`ws://${host}/ws`);
 
     socket.onopen = () => {
       set({ isConnected: true, ping: 15 });
+      
+      // СЕРЦЕБИТТЯ КОНТРОЛЕРА (Щоб не глушив Watchdog)
+      if (controlInterval) clearInterval(controlInterval);
+      controlInterval = setInterval(() => {
+        const state = get();
+        if (socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ L: state.motorSpeeds.left, R: state.motorSpeeds.right }));
+        }
+      }, 100); // Шлемо поточну швидкість кожні 100 мс
     };
 
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.dist !== undefined) {
-          set({ distance: data.dist });
-        }
-      } catch (err) {
-        console.error("Помилка парсингу:", err);
-      }
+        if (data.dist !== undefined) set({ distance: data.dist });
+      } catch (err) {}
     };
 
     socket.onclose = () => {
       set({ isConnected: false });
-      // Спроба перепідключення через 2 секунди
+      if (controlInterval) clearInterval(controlInterval);
       setTimeout(() => get().connect(), 2000);
-    };
-
-    socket.onerror = (error) => {
-      console.error("WebSocket помилка:", error);
-      socket?.close();
     };
   }
 }));
