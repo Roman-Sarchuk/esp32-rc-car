@@ -7,13 +7,13 @@
 #include <ESPmDNS.h>
 #include <Preferences.h>
 
-// --- ПІНИ (залишаються твої) ---
+// Піни
 const int ENA = 14; const int IN1 = 27; const int IN2 = 26;
 const int ENB = 32; const int IN3 = 25; const int IN4 = 33;
 const int TRIG_PIN = 13; const int ECHO_PIN = 35;
 const int LED_LEFT = 18; const int LED_RIGHT = 19;
 
-// --- СТАН ---
+// Стан
 int motorSpeedL = 0; int motorSpeedR = 0;
 bool turnLeft = false; bool turnRight = false; bool hazard = false;
 unsigned long lastCmdTime = 0;
@@ -28,6 +28,7 @@ bool use_sta;
 Preferences preferences;
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
+String postBody = ""; // Буфер для склеювання JSON-налаштувань
 
 void loadSettings() {
   preferences.begin("settings", true);
@@ -42,9 +43,16 @@ void loadSettings() {
 }
 
 void setMotors(int left, int right) {
-  digitalWrite(IN1, left > 0); digitalWrite(IN2, left < 0);
+  // Лівий
+  if (left > 0) { digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW); }
+  else if (left < 0) { digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH); }
+  else { digitalWrite(IN1, LOW); digitalWrite(IN2, LOW); }
   analogWrite(ENA, abs(left));
-  digitalWrite(IN3, right > 0); digitalWrite(IN4, right < 0);
+
+  // Правий
+  if (right > 0) { digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW); }
+  else if (right < 0) { digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH); }
+  else { digitalWrite(IN3, LOW); digitalWrite(IN4, LOW); }
   analogWrite(ENB, abs(right));
 }
 
@@ -62,8 +70,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     data[len] = 0;
     JsonDocument doc;
     if (!deserializeJson(doc, (char*)data)) {
-      lastCmdTime = millis();
-      // Використовуємо .as<int>(), що автоматично конвертує і float, і int з JS
+      lastCmdTime = millis(); // Оновлюємо Watchdog
+      
       if (doc.containsKey("L") && doc.containsKey("R")) {
         motorSpeedL = doc["L"].as<int>();
         motorSpeedR = doc["R"].as<int>();
@@ -86,23 +94,26 @@ void setup() {
   loadSettings();
   LittleFS.begin(true);
 
+  // Налаштування CORS (щоб браузер не блокував API)
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "content-type");
+
   if (use_sta && sta_ssid != "") {
     WiFi.begin(sta_ssid.c_str(), sta_pass.c_str());
     unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < 8000) { delay(500); }
   }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.softAP(ap_ssid.c_str(), ap_pass.c_str());
-  }
+  if (WiFi.status() != WL_CONNECTED) WiFi.softAP(ap_ssid.c_str(), ap_pass.c_str());
   
   MDNS.begin("esp-car");
+
   ws.onEvent([](AsyncWebSocket *s, AsyncWebSocketClient *c, AwsEventType t, void *arg, uint8_t *d, size_t l) {
     if (t == WS_EVT_DATA) handleWebSocketMessage(arg, d, l);
     if (t == WS_EVT_DISCONNECT) setMotors(0, 0);
   });
   server.addHandler(&ws);
 
+  // API: Читання налаштувань
   server.on("/api/settings", HTTP_GET, [](AsyncWebServerRequest *request){
     JsonDocument doc;
     doc["ap_ssid"] = ap_ssid; doc["ap_pass"] = ap_pass;
@@ -112,12 +123,13 @@ void setup() {
     request->send(200, "application/json", res);
   });
 
+  // API: Збереження налаштувань (Виправлено обробку Body)
   server.on("/api/settings", HTTP_POST, [](AsyncWebServerRequest *request){
-    request->send(200);
-    shouldReboot = true;
-  }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
     JsonDocument doc;
-    if (!deserializeJson(doc, (char*)data)) {
+    DeserializationError error = deserializeJson(doc, postBody);
+    postBody = ""; // Очищаємо буфер після читання
+    
+    if (!error) {
       preferences.begin("settings", false);
       if(doc.containsKey("ap_ssid")) preferences.putString("ap_ssid", doc["ap_ssid"].as<String>());
       if(doc.containsKey("ap_pass")) preferences.putString("ap_pass", doc["ap_pass"].as<String>());
@@ -127,7 +139,15 @@ void setup() {
       if(doc.containsKey("username")) preferences.putString("username", doc["username"].as<String>());
       if(doc.containsKey("userpassword")) preferences.putString("userpassword", doc["userpassword"].as<String>());
       preferences.end();
+      
+      request->send(200, "application/json", "{\"status\":\"ok\"}");
+      shouldReboot = true;
+    } else {
+      request->send(400, "text/plain", "Bad Request");
     }
+  }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+    if (index == 0) postBody = "";
+    for(size_t i = 0; i < len; i++) postBody += (char)data[i];
   });
 
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
@@ -144,14 +164,14 @@ void loop() {
     motorSpeedL = 0; motorSpeedR = 0; setMotors(0, 0);
   }
 
-  // Blink logic
+  // Блимання діодів
   if (millis() - lastBlinkTime > 400) {
     lastBlinkTime = millis(); ledBlinkState = !ledBlinkState;
-    digitalWrite(LED_LEFT, (hazard || turnLeft) && ledBlinkState);
-    digitalWrite(LED_RIGHT, (hazard || turnRight) && ledBlinkState);
+    digitalWrite(LED_LEFT, (hazard || turnLeft) ? ledBlinkState : LOW);
+    digitalWrite(LED_RIGHT, (hazard || turnRight) ? ledBlinkState : LOW);
   }
 
-  // Distance logic
+  // Датчик відстані
   if (millis() - lastDistanceMeasure > 500) {
     lastDistanceMeasure = millis();
     int dist = readDistance();
