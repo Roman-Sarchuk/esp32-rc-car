@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../data',
+    outDir: '../firmware/data',
     emptyOutDir: true,
   },
 })
