@@ -12,13 +12,13 @@ function LoginPage() {
   const { login } = useAuthStore();
 
   // functions
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const username = usernameRef.current?.value || "";
     const password = passwordRef.current?.value || "";
 
-    const isSuccess = login(username, password);
+    const isSuccess = await login(username, password);
 
     if (isSuccess) {
       setError("");
