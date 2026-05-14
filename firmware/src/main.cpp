@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <ESPmDNS.h>
 
 // --- ПІНИ ---
 // Мотори
@@ -95,7 +96,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     
     if (!error) {
       lastCmdTime = millis();
-      
+
       // Читаємо швидкості (перевіряємо, чи є ключ і чи це ціле число)
       if (doc["L"].is<int>() && doc["R"].is<int>()) {
         motorSpeedL = doc["L"].as<int>();
@@ -149,12 +150,32 @@ void setup() {
   Serial.print("Wi-Fi піднято! IP: ");
   Serial.println(WiFi.softAPIP());
 
+  // Запуск mDNS
+  if (!MDNS.begin("esp-car")) { // "esp-car" - це бажане ім'я
+    Serial.println("Помилка запуску mDNS!");
+  } else {
+    Serial.println("mDNS успішно запущено!");
+    Serial.println("Тепер сайт доступний за адресою: http://esp-car.local");
+    
+    // Опціонально: анонсуємо, що в нас тут працює веб-сервер
+    MDNS.addService("http", "tcp", 80);
+  }
+
   // Налаштування серверів
   ws.onEvent(onEvent);
   server.addHandler(&ws);
 
   // Роздаємо файли сайту (React збірку) з пам'яті ESP32
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+
+  // ПРО-ПОРАДА: Обробник для React Router (SPA)
+  server.onNotFound([](AsyncWebServerRequest *request) {
+    if (request->method() == HTTP_OPTIONS) {
+      request->send(200);
+    } else {
+      request->send(LittleFS, "/index.html", "text/html");
+    }
+  });
 
   server.begin();
 }
