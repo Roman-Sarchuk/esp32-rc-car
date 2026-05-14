@@ -30,7 +30,7 @@ export const useCarStore = create<CarState>((set, get) => ({
   setMode: (mode) => set({ mode }),
 
   toggleTurnSignal: (side) => {
-    const { turnSignals, isHazard } = get();
+    const { turnSignals } = get();
     
     // Якщо вмикаємо поворотник, аварійка завжди вимикається
     const newSignals = {

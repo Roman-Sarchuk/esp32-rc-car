@@ -13,7 +13,7 @@ const MainPage = () => {
 
   useEffect(() => {
     connect();
-    if (joystickRef.current) {
+      if (joystickRef.current) {
       const manager = nipplejs.create({
         zone: joystickRef.current,
         mode: 'static',
@@ -22,8 +22,11 @@ const MainPage = () => {
         size: 110
       });
 
-      manager.on('move', (_, data) => {
-        updateControl(data.vector.x * 100, data.vector.y * 100);
+      // nipplejs typings are a bit narrow here; cast to any and type handler params
+      (manager as any).on('move', (_evt: any, data: any) => {
+        if (data && data.vector) {
+          updateControl(data.vector.x * 100, data.vector.y * 100);
+        }
       });
 
       manager.on('end', () => updateControl(0, 0));
