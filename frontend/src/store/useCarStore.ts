@@ -77,6 +77,7 @@ export const useCarStore = create<CarState>((set, get) => ({
 
     const finalLeft = calculatePWM(left);
     const finalRight = calculatePWM(right);
+    console.log({ motorSpeeds: { left: finalLeft, right: finalRight } });
 
     set({ motorSpeeds: { left: finalLeft, right: finalRight } });
   },
