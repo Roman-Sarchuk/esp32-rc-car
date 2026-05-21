@@ -12,6 +12,7 @@ const int ENA = 14; const int IN1 = 27; const int IN2 = 26;
 const int ENB = 32; const int IN3 = 25; const int IN4 = 33;
 const int TRIG_PIN = 13; const int ECHO_PIN = 35;
 const int LED_LEFT = 18; const int LED_RIGHT = 19;
+const int LED_STOP = 21;
 
 // Стан
 int motorSpeedL = 0; int motorSpeedR = 0;
@@ -54,6 +55,12 @@ void setMotors(int left, int right) {
   else if (right < 0) { digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH); }
   else { digitalWrite(IN3, LOW); digitalWrite(IN4, LOW); }
   analogWrite(ENB, abs(right));
+
+  if (left == 0 && right == 0) {
+    digitalWrite(LED_STOP, HIGH); 
+  } else {
+    digitalWrite(LED_STOP, LOW);  
+  }
 }
 
 int readDistance() {
@@ -67,9 +74,9 @@ int readDistance() {
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-    data[len] = 0;
     JsonDocument doc;
-    if (!deserializeJson(doc, (char*)data)) {
+    DeserializationError error = deserializeJson(doc, data, len);
+    if (!error) {
       lastCmdTime = millis(); // Оновлюємо Watchdog
       
       if (doc.containsKey("L") && doc.containsKey("R")) {
@@ -90,6 +97,8 @@ void setup() {
   pinMode(ENB, OUTPUT); pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
   pinMode(TRIG_PIN, OUTPUT); pinMode(ECHO_PIN, INPUT);
   pinMode(LED_LEFT, OUTPUT); pinMode(LED_RIGHT, OUTPUT);
+  pinMode(LED_STOP, OUTPUT);
+  digitalWrite(LED_STOP, LOW);
   
   loadSettings();
   LittleFS.begin(true);
@@ -175,7 +184,7 @@ void loop() {
   if (millis() - lastDistanceMeasure > 500) {
     lastDistanceMeasure = millis();
     int dist = readDistance();
-    if (dist > 0 && dist < 12 && (motorSpeedL > 0 || motorSpeedR > 0)) {
+    if (dist > 0 && dist < 10 && (motorSpeedL > 0 || motorSpeedR > 0)) {
        motorSpeedL = 0; motorSpeedR = 0; setMotors(0, 0);
     }
     ws.textAll("{\"dist\":" + String(dist) + "}");
