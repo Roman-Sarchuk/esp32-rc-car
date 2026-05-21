@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSettings, type NetworkSettings } from "@/hooks/useSettings";
+import { useSettings, type NetworkSettings } from "@/store/useSettings";
 
 function SettingPage() {
   const { settings, isLoading, isSaving, saveSettings } = useSettings();
