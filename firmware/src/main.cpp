@@ -16,7 +16,10 @@ const int LED_STOP = 21;
 
 // Стан
 int motorSpeedL = 0; int motorSpeedR = 0;
+int targetSpeedL = 0; int targetSpeedR = 0;
+int currentSpeedL = 0; int currentSpeedR = 0;
 bool turnLeft = false; bool turnRight = false; bool hazard = false;
+bool isBlocked = false;
 unsigned long lastCmdTime = 0;
 unsigned long lastDistanceMeasure = 0;
 unsigned long lastBlinkTime = 0;
@@ -80,9 +83,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       lastCmdTime = millis(); // Оновлюємо Watchdog
       
       if (doc.containsKey("L") && doc.containsKey("R")) {
-        motorSpeedL = doc["L"].as<int>();
-        motorSpeedR = doc["R"].as<int>();
-        setMotors(motorSpeedL, motorSpeedR);
+        targetSpeedL = doc["L"].as<int>();
+        targetSpeedR = doc["R"].as<int>();
       }
       if (doc.containsKey("tL")) turnLeft = doc["tL"].as<bool>();
       if (doc.containsKey("tR")) turnRight = doc["tR"].as<bool>();
@@ -118,7 +120,15 @@ void setup() {
 
   ws.onEvent([](AsyncWebSocket *s, AsyncWebSocketClient *c, AwsEventType t, void *arg, uint8_t *d, size_t l) {
     if (t == WS_EVT_DATA) handleWebSocketMessage(arg, d, l);
-    if (t == WS_EVT_DISCONNECT) setMotors(0, 0);
+    if (t == WS_EVT_DISCONNECT) {
+      targetSpeedL = 0;
+      targetSpeedR = 0;
+      currentSpeedL = 0;
+      currentSpeedR = 0;
+      motorSpeedL = 0;
+      motorSpeedR = 0;
+      setMotors(0, 0);
+    }
   });
   server.addHandler(&ws);
 
@@ -168,9 +178,37 @@ void loop() {
   if (shouldReboot) { delay(1000); ESP.restart(); }
   ws.cleanupClients();
 
-  // Watchdog
-  if (millis() - lastCmdTime > 1000 && (motorSpeedL != 0 || motorSpeedR != 0)) {
-    motorSpeedL = 0; motorSpeedR = 0; setMotors(0, 0);
+  if (millis() - lastDistanceMeasure > 100) {
+    lastDistanceMeasure = millis();
+    int dist = readDistance();
+    ws.textAll("{\"dist\":" + String(dist) + "}");
+
+    if (dist > 0 && dist < 12) {
+      isBlocked = true;
+    } else {
+      isBlocked = false;
+    }
+  }
+
+  int applyL = targetSpeedL;
+  int applyR = targetSpeedR;
+
+  if (millis() - lastCmdTime > 1000) {
+    applyL = 0;
+    applyR = 0;
+  }
+
+  if (isBlocked) {
+    if (applyL > 0) applyL = 0;
+    if (applyR > 0) applyR = 0;
+  }
+
+  if (currentSpeedL != applyL || currentSpeedR != applyR) {
+    setMotors(applyL, applyR);
+    currentSpeedL = applyL;
+    currentSpeedR = applyR;
+    motorSpeedL = applyL;
+    motorSpeedR = applyR;
   }
 
   // Блимання діодів
@@ -178,15 +216,5 @@ void loop() {
     lastBlinkTime = millis(); ledBlinkState = !ledBlinkState;
     digitalWrite(LED_LEFT, (hazard || turnLeft) ? ledBlinkState : LOW);
     digitalWrite(LED_RIGHT, (hazard || turnRight) ? ledBlinkState : LOW);
-  }
-
-  // Датчик відстані
-  if (millis() - lastDistanceMeasure > 500) {
-    lastDistanceMeasure = millis();
-    int dist = readDistance();
-    if (dist > 0 && dist < 10 && (motorSpeedL > 0 || motorSpeedR > 0)) {
-       motorSpeedL = 0; motorSpeedR = 0; setMotors(0, 0);
-    }
-    ws.textAll("{\"dist\":" + String(dist) + "}");
   }
 }
