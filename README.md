@@ -80,6 +80,27 @@ robocopy .\dist ..\firmware\data /e
 
 After copying the built UI into `firmware/data/`, rebuild and upload the firmware so the web UI is available from the ESP.
 
+
+**Pinout**
+
+The firmware defines the following GPIO assignments (see `firmware/src/main.cpp`):
+
+| Signal | Function |
+|---|---|
+| `ENA` (GPIO 14) | Left motor PWM enable (speed)
+| `IN1` (GPIO 27) | Left motor direction input 1
+| `IN2` (GPIO 26) | Left motor direction input 2
+| `ENB` (GPIO 32) | Right motor PWM enable (speed)
+| `IN3` (GPIO 25) | Right motor direction input 1
+| `IN4` (GPIO 33) | Right motor direction input 2
+| `TRIG_PIN` (GPIO 13) | HC-SR04 trigger
+| `ECHO_PIN` (GPIO 35) | HC-SR04 echo (input)
+| `LED_LEFT` (GPIO 18) | Left indicator LED (blinking)
+| `LED_RIGHT` (GPIO 19) | Right indicator LED (blinking)
+| `LED_STOP` (GPIO 21) | Brake / stopped indicator LED
+
+Use these GPIOs to wire the motor driver inputs, ultrasonic sensor, and LEDs. If you change pins in code, update this table accordingly.
+
 Wiring notes
 
 - Motors: connect to your H-bridge motor driver outputs; driver inputs to the ESP32 GPIOs referenced in `firmware/src/main.cpp`.
