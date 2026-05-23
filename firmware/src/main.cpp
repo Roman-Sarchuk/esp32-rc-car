@@ -7,14 +7,14 @@
 #include <ESPmDNS.h>
 #include <Preferences.h>
 
-// Піни
+// Pins
 const int ENA = 14; const int IN1 = 27; const int IN2 = 26;
 const int ENB = 32; const int IN3 = 25; const int IN4 = 33;
 const int TRIG_PIN = 13; const int ECHO_PIN = 35;
 const int LED_LEFT = 18; const int LED_RIGHT = 19;
 const int LED_STOP = 21;
 
-// Стан
+// State
 int motorSpeedL = 0; int motorSpeedR = 0;
 int targetSpeedL = 0; int targetSpeedR = 0;
 int currentSpeedL = 0; int currentSpeedR = 0;
@@ -32,7 +32,7 @@ bool use_sta;
 Preferences preferences;
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
-String postBody = ""; // Буфер для склеювання JSON-налаштувань
+String postBody = ""; // Buffer for accumulating JSON settings
 
 void loadSettings() {
   preferences.begin("settings", true);
@@ -47,13 +47,13 @@ void loadSettings() {
 }
 
 void setMotors(int left, int right) {
-  // Лівий
+  // Left
   if (left > 0) { digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW); }
   else if (left < 0) { digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH); }
   else { digitalWrite(IN1, LOW); digitalWrite(IN2, LOW); }
   analogWrite(ENA, abs(left));
 
-  // Правий
+  // Right
   if (right > 0) { digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW); }
   else if (right < 0) { digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH); }
   else { digitalWrite(IN3, LOW); digitalWrite(IN4, LOW); }
@@ -105,7 +105,7 @@ void setup() {
   loadSettings();
   LittleFS.begin(true);
 
-  // Налаштування CORS (щоб браузер не блокував API)
+  // Setup CORS (so the browser doesn't block the API)
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "content-type");
 
@@ -132,7 +132,7 @@ void setup() {
   });
   server.addHandler(&ws);
 
-  // API: Читання налаштувань
+  // API: Read settings
   server.on("/api/settings", HTTP_GET, [](AsyncWebServerRequest *request){
     JsonDocument doc;
     doc["ap_ssid"] = ap_ssid; doc["ap_pass"] = ap_pass;
@@ -142,7 +142,7 @@ void setup() {
     request->send(200, "application/json", res);
   });
 
-  // API: Збереження налаштувань (Виправлено обробку Body)
+  // API: Save settings (fixed body handling)
   server.on("/api/settings", HTTP_POST, [](AsyncWebServerRequest *request){
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, postBody);
@@ -211,7 +211,7 @@ void loop() {
     motorSpeedR = applyR;
   }
 
-  // Блимання діодів
+  // LED blinking
   if (millis() - lastBlinkTime > 400) {
     lastBlinkTime = millis(); ledBlinkState = !ledBlinkState;
     digitalWrite(LED_LEFT, (hazard || turnLeft) ? ledBlinkState : LOW);
